@@ -185,7 +185,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, c
                  {(!voices.length && !isLoadingVoices) && (
                    <div className="space-y-1 pt-2 border-t border-white/5">
                       <label className="text-[10px] uppercase font-bold text-gray-500">Or Enter Voice ID Manually</label>
-                      <input 
+                      <input
                         type="text"
                         value={localConfig.cartesiaVoiceId || ''}
                         onChange={(e) => setLocalConfig(prev => ({ ...prev, cartesiaVoiceId: e.target.value }))}
@@ -194,6 +194,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, c
                       />
                    </div>
                  )}
+
+                 {/* Cost Optimized Mode Toggle */}
+                 <div className="pt-3 mt-3 border-t border-white/10">
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <label className="text-xs font-bold text-white flex items-center gap-2">
+                         Cost Optimized Mode
+                         <span className="px-1.5 py-0.5 rounded bg-green-500 text-[10px] text-white">SAVES 44%</span>
+                       </label>
+                       <p className="text-[10px] text-gray-400 mt-1">
+                         Use Gemini TEXT output ($2/1M) instead of AUDIO ($12/1M). Adds ~100-200ms latency.
+                       </p>
+                     </div>
+                     <button
+                       onClick={() => setLocalConfig(prev => ({ ...prev, useTextMode: !prev.useTextMode }))}
+                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${localConfig.useTextMode ? 'bg-green-500' : 'bg-gray-700'}`}
+                     >
+                       <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${localConfig.useTextMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                     </button>
+                   </div>
+                 </div>
               </div>
             )}
           </div>

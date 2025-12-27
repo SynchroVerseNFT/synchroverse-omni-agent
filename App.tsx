@@ -28,7 +28,8 @@ export default function App() {
     commentaryInterval: 30, // Default 30s interval
     useCartesia: false,
     cartesiaApiKey: '',
-    cartesiaVoiceId: ''
+    cartesiaVoiceId: '',
+    useTextMode: false, // Cost optimization: TEXT mode + Cartesia is 44% cheaper than AUDIO mode
   });
 
   const videoRef = useRef<HTMLVideoElement>(null);

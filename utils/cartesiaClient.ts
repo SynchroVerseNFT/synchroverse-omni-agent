@@ -25,12 +25,17 @@ export class CartesiaClient {
   private onAudioCallback: (audioData: Float32Array) => void;
   private contextId: string;
   private isConnected: boolean = false;
+  private isFlushing: boolean = false;
 
   constructor(apiKey: string, voiceId: string, onAudioCallback: (data: Float32Array) => void) {
     this.apiKey = apiKey;
     this.voiceId = voiceId;
     this.onAudioCallback = onAudioCallback;
-    this.contextId = `ctx_${Math.random().toString(36).substring(7)}`;
+    this.contextId = this.generateContextId();
+  }
+
+  private generateContextId(): string {
+    return `ctx_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   }
 
   connect(): Promise<void> {
@@ -74,6 +79,7 @@ export class CartesiaClient {
 
   send(text: string) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.isFlushing) return; // Don't send while flushing
 
     const payload = {
       model_id: "sonic-english",
@@ -94,11 +100,43 @@ export class CartesiaClient {
     this.ws.send(JSON.stringify(payload));
   }
 
+  /**
+   * Flush/cancel current TTS generation.
+   * This is called when the user interrupts the AI mid-speech.
+   * We reset the context_id to start fresh for the next response.
+   */
+  flush() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    this.isFlushing = true;
+
+    // Send cancel command for current context
+    const cancelPayload = {
+      context_id: this.contextId,
+      cancel: true
+    };
+
+    try {
+      this.ws.send(JSON.stringify(cancelPayload));
+    } catch (e) {
+      console.error("Failed to send cancel to Cartesia:", e);
+    }
+
+    // Generate new context for next generation
+    this.contextId = this.generateContextId();
+
+    // Allow sending again after a brief delay
+    setTimeout(() => {
+      this.isFlushing = false;
+    }, 50);
+  }
+
   disconnect() {
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
     this.isConnected = false;
+    this.isFlushing = false;
   }
 }

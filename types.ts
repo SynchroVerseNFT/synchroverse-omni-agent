@@ -26,6 +26,10 @@ export interface StreamConfig {
   useCartesia?: boolean;
   cartesiaApiKey?: string;
   cartesiaVoiceId?: string;
+  // Cost Optimization: Use TEXT mode output instead of AUDIO
+  // When enabled with Cartesia, Gemini outputs text ($2/1M) instead of audio ($12/1M)
+  // This is 44% cheaper overall but adds ~100-200ms latency
+  useTextMode?: boolean;
 }
 
 export interface CartesiaVoice {

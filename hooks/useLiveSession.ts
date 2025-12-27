@@ -457,13 +457,16 @@ export const useLiveSession = ({ config, tools, onLog, videoElementRef }: UseLiv
       // Initialize Cartesia if enabled
       if (config.useCartesia && config.cartesiaApiKey && config.cartesiaVoiceId) {
           cartesiaClientRef.current = new CartesiaClient(
-              config.cartesiaApiKey, 
+              config.cartesiaApiKey,
               config.cartesiaVoiceId,
               handleCartesiaAudio
           );
           try {
               await cartesiaClientRef.current.connect();
-              onLog({ timestamp: new Date(), type: 'system', message: 'Connected to Cartesia TTS (Sonic).' });
+              const modeDesc = config.useTextMode
+                  ? 'TEXT mode (44% cheaper - $2/1M tokens)'
+                  : 'AUDIO mode with transcription';
+              onLog({ timestamp: new Date(), type: 'system', message: `Connected to Cartesia TTS (Sonic) - Using ${modeDesc}` });
           } catch (e) {
               onLog({ timestamp: new Date(), type: 'system', message: 'Failed to connect to Cartesia.' });
           }
@@ -495,13 +498,20 @@ export const useLiveSession = ({ config, tools, onLog, videoElementRef }: UseLiv
           finalSystemInstruction += `\n\nIMPORTANT: You must start the conversation by saying exactly this sentence: "${config.firstGreeting}". Do not wait for the user to speak first.`;
       }
 
+      // Cost Optimization: Use TEXT mode when Cartesia TTS is enabled with useTextMode
+      // TEXT mode costs $2/1M tokens vs AUDIO mode at $12/1M tokens (44% cheaper overall)
+      const useTextOutput = config.useCartesia && config.useTextMode;
+
       const sessionPromise = ai.live.connect({
         model: config.model,
         config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } },
-          },
+          responseModalities: [useTextOutput ? Modality.TEXT : Modality.AUDIO],
+          // Only include speech config when using native audio output
+          ...(useTextOutput ? {} : {
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voiceName } },
+            },
+          }),
           // Fixed: Moved config out of deprecated generationConfig
           temperature: 0.9,
           topP: 0.95,
@@ -664,18 +674,30 @@ export const useLiveSession = ({ config, tools, onLog, videoElementRef }: UseLiv
                 turnStartTimeRef.current = new Date();
             }
 
-            // Handle Output Transcription (Feed to Cartesia)
+            // Handle TEXT mode responses (when using Cartesia + TEXT mode for cost optimization)
+            // In TEXT mode, Gemini sends text directly in modelTurn.parts instead of audio
+            const textPart = msg.serverContent?.modelTurn?.parts?.[0]?.text;
+            if (textPart && useTextOutput) {
+                modelTranscriptionRef.current += textPart;
+                // Pipe text to Cartesia for TTS
+                if (cartesiaClientRef.current) {
+                    cartesiaClientRef.current.send(textPart);
+                }
+            }
+
+            // Handle Output Transcription (when using AUDIO mode + Cartesia for voice replacement)
+            // In this mode, Gemini outputs audio but we use transcription to feed Cartesia
             const outputTranscript = msg.serverContent?.outputTranscription;
-            if (outputTranscript?.text) {
+            if (outputTranscript?.text && !useTextOutput) {
                 modelTranscriptionRef.current += outputTranscript.text;
-                // If using Cartesia, pipe the text immediately
+                // If using Cartesia (but not TEXT mode), pipe the transcription to it
                 if (cartesiaClientRef.current) {
                     cartesiaClientRef.current.send(outputTranscript.text);
                 }
             }
 
-            // Handle Audio from Gemini
-            // If Cartesia is enabled, we IGNORE the audio chunks from Gemini (mute native voice)
+            // Handle Audio from Gemini (Native Gemini voice output)
+            // If Cartesia is enabled OR we're in TEXT mode, we IGNORE audio chunks
             const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (audioData && outputContextRef.current && !config.useCartesia) {
                 const ctx = outputContextRef.current;
@@ -759,7 +781,7 @@ export const useLiveSession = ({ config, tools, onLog, videoElementRef }: UseLiv
             if (msg.serverContent?.interrupted) {
                  modelTranscriptionRef.current = "";
                  turnStartTimeRef.current = null;
-                 
+
                  // Stop all currently playing audio immediately
                  activeAudioNodesRef.current.forEach(node => {
                      try { node.stop(); node.disconnect(); } catch(e){}
@@ -771,10 +793,11 @@ export const useLiveSession = ({ config, tools, onLog, videoElementRef }: UseLiv
                      nextStartTimeRef.current = outputContextRef.current.currentTime;
                  }
                  updateDucking();
-                 
-                 // If interrupted, we must stop Cartesia immediately as well to stop talking over user
-                 // Currently the websocket streaming might continue, we can close/reopen or just leave it
-                 // but visually we should stop. Ideally Cartesia client would have a 'stop' method.
+
+                 // Stop Cartesia TTS immediately when interrupted
+                 if (cartesiaClientRef.current) {
+                     cartesiaClientRef.current.flush();
+                 }
             }
 
             // Handle Tools
