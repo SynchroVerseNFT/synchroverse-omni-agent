@@ -1,0 +1,9 @@
+{
+  "name": "Gemini Live Omni-Agent",
+  "description": "A multimodal conversational agent capable of viewing your screen or webcam, listening to audio, and executing tools in real-time using Gemini 2.5 Live API.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "display-capture"
+  ]
+}
